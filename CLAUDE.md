@@ -45,6 +45,13 @@ Two paths considered:
 - **Scenario 1 "Lab":** PWA web chat + memory + image generation for technical validation.
 - **Scenario 2 "Fortress":** compliance-first web app with KYC, GDPR, and WhatsApp Business (SFW only).
 
+## Common Pitfalls
+
+- **Alembic "No module named 'app'":** When running Alembic inside the Docker container, the Python path must include `/app` (the backend root). This is handled by `sys.path.insert` in `alembic/env.py`. Do not remove it.
+- **Alembic DB URL in Docker:** Inside Docker, PostgreSQL is at `postgres:5432`, not `localhost:5432`. The `alembic/env.py` reads `DATABASE_URL` from the environment (set by `docker-compose.yml`) to override the default in `alembic.ini`.
+- **Migrations must be generated before they can be applied:** Run `alembic revision --autogenerate -m "description"` first, then `alembic upgrade head`. Both commands must run inside the backend container: `docker exec -it infra-backend-1 alembic ...`
+- **Frontend runs locally, not in Docker.** Install deps with `npm install` in the `frontend/` directory, then `npm run dev`.
+
 ## Development Guidelines
 
 - Keep Jarvis and Her modes strictly separated in code — no leaking of NSFW behavior into standard mode.
