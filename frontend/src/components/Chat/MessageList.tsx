@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useChatStore, ChatMessage } from "../../store/chatStore";
+import ImageMessage from "./ImageMessage";
 
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
@@ -12,8 +13,12 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             : "bg-gray-800 text-gray-100 rounded-bl-md"
         }`}
       >
-        <p className="whitespace-pre-wrap">{message.content}</p>
-        {message.isStreaming && (
+        {message.images && message.images.length > 0 ? (
+          <ImageMessage images={message.images} />
+        ) : (
+          <p className="whitespace-pre-wrap">{message.content}</p>
+        )}
+        {message.isStreaming && !message.images && (
           <span className="inline-block w-1.5 h-4 ml-0.5 bg-white/70 animate-pulse" />
         )}
       </div>

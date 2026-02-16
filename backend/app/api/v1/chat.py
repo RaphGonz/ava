@@ -1,3 +1,4 @@
+import base64
 import json
 import uuid
 
@@ -14,11 +15,15 @@ from app.models.user import User
 from app.orchestrator.guardian import Guardian
 from app.orchestrator.router import Router, Intent
 from app.orchestrator.jarvis import JarvisModule
+from app.orchestrator.her import HerModule
+from app.orchestrator.memory import recall, remember, extract_facts
+from app.image.generator import image_generator
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 guardian = Guardian()
 intent_router = Router()
 jarvis = JarvisModule()
+her = HerModule()
 
 
 class ChatRequest(BaseModel):
@@ -48,6 +53,42 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=filter_result.reason or "Message blocked by content filter",
+        )
+
+    # Safe word check — toggle mode
+    if user.safe_word and guardian.check_safe_word(body.content, user.safe_word):
+        new_mode = "her" if user.current_mode == "jarvis" else "jarvis"
+        user.current_mode = new_mode
+        await db.commit()
+
+        async def mode_switch_event():
+            yield json.dumps({
+                "event": "mode_switch",
+                "mode": new_mode,
+                "message": f"Mode switched to {new_mode}.",
+            })
+
+        return EventSourceResponse(mode_switch_event())
+
+    # Exit keyword check (only in Her mode)
+    if user.current_mode == "her" and guardian.check_exit_keyword(body.content):
+        user.current_mode = "jarvis"
+        await db.commit()
+
+        async def exit_event():
+            yield json.dumps({
+                "event": "mode_switch",
+                "mode": "jarvis",
+                "message": "Returning to Jarvis mode.",
+            })
+
+        return EventSourceResponse(exit_event())
+
+    # Age verification gate for Her mode
+    if user.current_mode == "her" and not user.is_age_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Age verification required for intimate mode",
         )
 
     # Get or create session
@@ -89,16 +130,61 @@ async def send_message(
     # Classify intent
     intent = await intent_router.classify(body.content)
 
+    # Handle image requests
+    if intent == Intent.IMAGE_REQUEST:
+        assistant_msg_id = uuid.uuid4()
+        try:
+            image_bytes_list = await image_generator.generate(
+                prompt=body.content, user=user
+            )
+            encoded = [
+                base64.b64encode(img).decode("utf-8") for img in image_bytes_list
+            ]
+
+            async def image_generate():
+                yield json.dumps({
+                    "event": "image",
+                    "images": encoded,
+                    "session_id": str(session.id),
+                    "msg_id": str(assistant_msg_id),
+                    "mode": user.current_mode,
+                })
+                assistant_msg = Message(
+                    id=assistant_msg_id,
+                    session_id=session.id,
+                    user_id=user.id,
+                    role="assistant",
+                    content=f"[Generated image for: {body.content}]",
+                    mode=user.current_mode,
+                )
+                db.add(assistant_msg)
+                session.message_count = (session.message_count or 0) + 2
+                await db.commit()
+
+            return EventSourceResponse(image_generate())
+        except Exception:
+            # Fall through to text response if image gen fails
+            pass
+
+    # Recall memories
+    memories = await recall(user_id=str(user.id), query=body.content, limit=5)
+
+    # Choose module based on mode
+    module = her if user.current_mode == "her" else jarvis
+
     # Stream response
     assistant_msg_id = uuid.uuid4()
 
     async def generate():
         full_response = []
-        async for token in jarvis.stream(body.content, history, user):
+        async for token in module.stream(body.content, history, user, memories=memories):
             full_response.append(token)
-            yield json.dumps(
-                {"token": token, "session_id": str(session.id), "msg_id": str(assistant_msg_id)}
-            )
+            yield json.dumps({
+                "token": token,
+                "session_id": str(session.id),
+                "msg_id": str(assistant_msg_id),
+                "mode": user.current_mode,
+            })
 
         # Save assistant message after streaming completes
         content = "".join(full_response)
@@ -113,6 +199,17 @@ async def send_message(
         db.add(assistant_msg)
         session.message_count = (session.message_count or 0) + 2
         await db.commit()
+
+        # Write memories
+        facts = extract_facts(body.content, content)
+        for fact in facts:
+            vector_id = await remember(
+                user_id=str(user.id),
+                text=fact,
+                source_message_id=str(assistant_msg_id),
+            )
+            assistant_msg.vector_id = vector_id
+            await db.commit()
 
     return EventSourceResponse(generate())
 

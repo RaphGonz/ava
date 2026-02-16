@@ -21,6 +21,7 @@ class User(Base):
     current_mode: Mapped[str] = mapped_column(String(20), default="jarvis")
     avatar_config: Mapped[dict | None] = mapped_column(JSONB)
     is_age_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_onboarded: Mapped[bool] = mapped_column(Boolean, default=False)
     subscription_tier: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

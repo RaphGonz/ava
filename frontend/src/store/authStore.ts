@@ -3,7 +3,14 @@ import api from "../api/client";
 
 interface AuthState {
   token: string | null;
-  user: { id: string; email: string; username: string | null; current_mode: string } | null;
+  user: {
+    id: string;
+    email: string;
+    username: string | null;
+    current_mode: string;
+    is_age_verified: boolean;
+    is_onboarded: boolean;
+  } | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, username?: string) => Promise<void>;

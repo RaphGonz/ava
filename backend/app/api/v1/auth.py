@@ -38,6 +38,8 @@ class UserResponse(BaseModel):
     email: str
     username: str | None
     current_mode: str
+    is_age_verified: bool
+    is_onboarded: bool
 
     model_config = {"from_attributes": True}
 
@@ -84,4 +86,6 @@ async def me(user: User = Depends(get_current_user)):
         email=user.email,
         username=user.username,
         current_mode=user.current_mode,
+        is_age_verified=user.is_age_verified,
+        is_onboarded=getattr(user, "is_onboarded", False),
     )

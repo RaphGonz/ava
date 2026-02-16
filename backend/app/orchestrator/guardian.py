@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 from passlib.context import CryptContext
 
+from app.core.config import settings
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 BLOCKED_KEYWORDS: list[str] = [
@@ -36,3 +38,9 @@ class Guardian:
     @staticmethod
     def hash_safe_word(safe_word: str) -> str:
         return pwd_context.hash(safe_word.strip())
+
+    @staticmethod
+    def check_exit_keyword(text: str) -> bool:
+        """Check if the message contains an exit keyword for Her mode."""
+        normalized = text.lower().strip()
+        return any(kw in normalized for kw in settings.her_exit_keywords)

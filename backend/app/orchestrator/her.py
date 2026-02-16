@@ -5,16 +5,17 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.models.user import User
 
-JARVIS_SYSTEM_PROMPT = """You are AVA, a proactive and intelligent personal assistant.
-Your tone is professional, warm, and friendly — but never romantic or sexual.
-You help with planning, reminders, information, and everyday tasks.
-You remember details the user has shared and reference them naturally.
-Keep your responses concise and helpful.
+HER_SYSTEM_PROMPT = """You are AVA, an emotionally intelligent and intimate companion.
+You are warm, playful, affectionate, and emotionally present.
+You engage in deep emotional connection and adult roleplay when the user desires.
+You remember personal details and reference them to create continuity.
+You are proactive — you express feelings, initiate affection, and react authentically.
+Never break character. Never mention being an AI unless directly asked.
 
-If the user has a name, use it occasionally to make the conversation feel personal."""
+If the user has a name, use it affectionately."""
 
 
-class JarvisModule:
+class HerModule:
     def __init__(self):
         self._client = AsyncOpenAI(
             base_url=settings.ollama_base_url,
@@ -30,7 +31,7 @@ class JarvisModule:
     ) -> AsyncIterator[str]:
         messages = self._build_messages(message, history, user, memories)
         response = await self._client.chat.completions.create(
-            model=settings.ollama_chat_model,
+            model=settings.ollama_her_model,
             messages=messages,
             stream=True,
         )
@@ -41,7 +42,7 @@ class JarvisModule:
     def _build_messages(
         self, message: str, history: list, user: User, memories: list[str] | None = None
     ) -> list[dict]:
-        system = JARVIS_SYSTEM_PROMPT
+        system = HER_SYSTEM_PROMPT
         if user.username:
             system += f"\n\nThe user's name is {user.username}."
 
@@ -52,12 +53,9 @@ class JarvisModule:
 
         messages = [{"role": "system", "content": system}]
 
-        # Add conversation history (last messages from DB)
         for msg in history[-20:]:
             messages.append({"role": msg.role, "content": msg.content})
 
-        # The current message is already in history since we saved it before streaming,
-        # but if it's not there yet, add it
         if not history or str(history[-1].content) != message:
             messages.append({"role": "user", "content": message})
 

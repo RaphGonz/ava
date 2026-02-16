@@ -9,6 +9,8 @@ export function useChat() {
     appendToken,
     finishStreaming,
     setSessionId,
+    setMode,
+    setMessageImages,
     sessionId,
     isStreaming,
   } = useChatStore();
@@ -39,8 +41,27 @@ export function useChat() {
           if (!event.data) return;
           try {
             const data = JSON.parse(event.data);
+
+            // Handle mode switch events
+            if (data.event === "mode_switch") {
+              setMode(data.mode);
+              appendToken(assistantMsgId, data.message);
+              finishStreaming(assistantMsgId);
+              return;
+            }
+
+            // Handle image events
+            if (data.event === "image" && data.images) {
+              setMessageImages(assistantMsgId, data.images);
+              finishStreaming(assistantMsgId);
+              return;
+            }
+
             if (data.token) {
               appendToken(assistantMsgId, data.token);
+            }
+            if (data.mode) {
+              setMode(data.mode);
             }
             if (data.session_id && !sessionId) {
               setSessionId(data.session_id);
@@ -66,6 +87,8 @@ export function useChat() {
       appendToken,
       finishStreaming,
       setSessionId,
+      setMode,
+      setMessageImages,
     ]
   );
 
