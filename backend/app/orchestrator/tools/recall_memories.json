@@ -1,0 +1,17 @@
+{
+  "type": "function",
+  "function": {
+    "name": "recall_memories",
+    "description": "Search your memory for past conversations, facts, preferences, and details the user has shared. Call this when the user references something from the past, asks about their own history, or when context about their preferences would improve your response.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "A short search query to find relevant memories"
+        }
+      },
+      "required": ["query"]
+    }
+  }
+}

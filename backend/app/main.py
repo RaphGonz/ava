@@ -1,7 +1,14 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Configure logging so orchestrator logs show up in Docker
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)-5s %(name)s: %(message)s",
+)
 
 from app.core.config import settings
 from app.api.v1 import auth, chat, image, onboarding

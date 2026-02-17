@@ -1,9 +1,6 @@
 from qdrant_client import QdrantClient, models
 from app.core.config import settings
 
-COLLECTION_NAME = "ava_memories"
-VECTOR_DIM = 384  # all-MiniLM-L6-v2 output dimension
-
 
 class VectorStore:
     def __init__(self):
@@ -13,11 +10,11 @@ class VectorStore:
         """Called once during FastAPI lifespan startup."""
         self._client = QdrantClient(url=settings.qdrant_url)
         collections = [c.name for c in self._client.get_collections().collections]
-        if COLLECTION_NAME not in collections:
+        if settings.qdrant_collection_name not in collections:
             self._client.create_collection(
-                collection_name=COLLECTION_NAME,
+                collection_name=settings.qdrant_collection_name,
                 vectors_config=models.VectorParams(
-                    size=VECTOR_DIM,
+                    size=settings.embedding_vector_dim,
                     distance=models.Distance.COSINE,
                 ),
             )
@@ -29,7 +26,7 @@ class VectorStore:
         payload: dict,
     ) -> None:
         self._client.upsert(
-            collection_name=COLLECTION_NAME,
+            collection_name=settings.qdrant_collection_name,
             points=[
                 models.PointStruct(
                     id=vector_id,
@@ -43,10 +40,12 @@ class VectorStore:
         self,
         embedding: list[float],
         user_id: str,
-        limit: int = 5,
+        limit: int | None = None,
     ) -> list[dict]:
+        if limit is None:
+            limit = settings.memory_recall_limit
         results = self._client.query_points(
-            collection_name=COLLECTION_NAME,
+            collection_name=settings.qdrant_collection_name,
             query=embedding,
             query_filter=models.Filter(
                 must=[

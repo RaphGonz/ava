@@ -1,5 +1,5 @@
-import base64
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,18 +12,15 @@ from app.api.deps import get_current_user
 from app.db.postgres import get_db
 from app.models.session import Message, Session
 from app.models.user import User
+from app.core.config import settings
 from app.orchestrator.guardian import Guardian
-from app.orchestrator.router import Router, Intent
-from app.orchestrator.jarvis import JarvisModule
-from app.orchestrator.her import HerModule
-from app.orchestrator.memory import recall, remember, extract_facts
-from app.image.generator import image_generator
+from app.orchestrator.agent import run_agent
+from app.orchestrator.memory import remember, extract_facts
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 guardian = Guardian()
-intent_router = Router()
-jarvis = JarvisModule()
-her = HerModule()
 
 
 class ChatRequest(BaseModel):
@@ -47,19 +44,23 @@ async def send_message(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Pre-filter
+    user_id_short = str(user.id)[:8]
+
+    # Pre-filter (always, cheap)
     filter_result = await guardian.pre_filter(body.content)
     if filter_result.blocked:
+        logger.warning("[user:%s] message blocked by guardian", user_id_short)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=filter_result.reason or "Message blocked by content filter",
         )
 
-    # Safe word check — toggle mode
-    if user.safe_word and guardian.check_safe_word(body.content, user.safe_word):
+    # Safe word check — toggle mode (async, with length pre-check)
+    if user.safe_word and await guardian.check_safe_word(body.content, user.safe_word):
         new_mode = "her" if user.current_mode == "jarvis" else "jarvis"
         user.current_mode = new_mode
         await db.commit()
+        logger.info("[user:%s] mode switched to %s via safe word", user_id_short, new_mode)
 
         async def mode_switch_event():
             yield json.dumps({
@@ -74,6 +75,7 @@ async def send_message(
     if user.current_mode == "her" and guardian.check_exit_keyword(body.content):
         user.current_mode = "jarvis"
         await db.commit()
+        logger.info("[user:%s] exiting Her mode via keyword", user_id_short)
 
         async def exit_event():
             yield json.dumps({
@@ -118,73 +120,58 @@ async def send_message(
     db.add(user_msg)
     await db.commit()
 
-    # Get conversation history
+    # Get conversation history (only what we need)
     history_result = await db.execute(
         select(Message)
         .where(Message.session_id == session.id)
         .order_by(Message.created_at)
-        .limit(50)
+        .limit(settings.agent_context_messages)
     )
     history = history_result.scalars().all()
 
-    # Classify intent
-    intent = await intent_router.classify(body.content)
+    logger.info(
+        "[user:%s] starting agent (mode=%s, history=%d msgs)",
+        user_id_short, user.current_mode, len(history),
+    )
 
-    # Handle image requests
-    if intent == Intent.IMAGE_REQUEST:
-        assistant_msg_id = uuid.uuid4()
-        try:
-            image_bytes_list = await image_generator.generate(
-                prompt=body.content, user=user
-            )
-            encoded = [
-                base64.b64encode(img).decode("utf-8") for img in image_bytes_list
-            ]
-
-            async def image_generate():
-                yield json.dumps({
-                    "event": "image",
-                    "images": encoded,
-                    "session_id": str(session.id),
-                    "msg_id": str(assistant_msg_id),
-                    "mode": user.current_mode,
-                })
-                assistant_msg = Message(
-                    id=assistant_msg_id,
-                    session_id=session.id,
-                    user_id=user.id,
-                    role="assistant",
-                    content=f"[Generated image for: {body.content}]",
-                    mode=user.current_mode,
-                )
-                db.add(assistant_msg)
-                session.message_count = (session.message_count or 0) + 2
-                await db.commit()
-
-            return EventSourceResponse(image_generate())
-        except Exception:
-            # Fall through to text response if image gen fails
-            pass
-
-    # Recall memories
-    memories = await recall(user_id=str(user.id), query=body.content, limit=5)
-
-    # Choose module based on mode
-    module = her if user.current_mode == "her" else jarvis
-
-    # Stream response
+    # Run the agent and stream response
     assistant_msg_id = uuid.uuid4()
+    current_mode = user.current_mode
 
     async def generate():
         full_response = []
-        async for token in module.stream(body.content, history, user, memories=memories):
-            full_response.append(token)
-            yield json.dumps({
-                "token": token,
-                "session_id": str(session.id),
-                "msg_id": str(assistant_msg_id),
-                "mode": user.current_mode,
-            })
+
+        async for event in run_agent(body.content, history, user, current_mode):
+            if event["type"] == "token":
+                full_response.append(event["content"])
+                yield json.dumps({
+                    "token": event["content"],
+                    "session_id": str(session.id),
+                    "msg_id": str(assistant_msg_id),
+                    "mode": current_mode,
+                })
+            elif event["type"] == "image":
+                yield json.dumps({
+                    "event": "image",
+                    "images": event["images"],
+                    "session_id": str(session.id),
+                    "msg_id": str(assistant_msg_id),
+                    "mode": current_mode,
+                })
+            elif event["type"] == "tool_start":
+                yield json.dumps({
+                    "event": "tool_start",
+                    "tool": event["tool"],
+                    "session_id": str(session.id),
+                    "mode": current_mode,
+                })
+            elif event["type"] == "tool_done":
+                yield json.dumps({
+                    "event": "tool_done",
+                    "tool": event["tool"],
+                    "session_id": str(session.id),
+                    "mode": current_mode,
+                })
 
         # Save assistant message after streaming completes
         content = "".join(full_response)
@@ -194,13 +181,13 @@ async def send_message(
             user_id=user.id,
             role="assistant",
             content=content,
-            mode=user.current_mode,
+            mode=current_mode,
         )
         db.add(assistant_msg)
         session.message_count = (session.message_count or 0) + 2
         await db.commit()
 
-        # Write memories
+        # Write memories (background, after stream)
         facts = extract_facts(body.content, content)
         for fact in facts:
             vector_id = await remember(
@@ -217,7 +204,7 @@ async def send_message(
 @router.get("/history")
 async def get_history(
     session_id: str | None = None,
-    limit: int = 50,
+    limit: int = settings.chat_history_default_limit,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -248,7 +235,7 @@ async def get_sessions(
         select(Session)
         .where(Session.user_id == user.id)
         .order_by(desc(Session.started_at))
-        .limit(20)
+        .limit(settings.chat_sessions_default_limit)
     )
     sessions = result.scalars().all()
     return [

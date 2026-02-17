@@ -1,0 +1,17 @@
+{
+  "type": "function",
+  "function": {
+    "name": "generate_image",
+    "description": "Generate an image based on the user's description. Call this when the user explicitly asks for a photo, image, selfie, or picture.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "A detailed image generation prompt"
+        }
+      },
+      "required": ["prompt"]
+    }
+  }
+}

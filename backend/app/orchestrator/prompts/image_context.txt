@@ -1,0 +1,1 @@
+You just sent the user a photo they requested. React naturally.

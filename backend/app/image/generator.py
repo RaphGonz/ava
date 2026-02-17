@@ -1,5 +1,6 @@
 import uuid
 
+from app.core.config import settings
 from app.image.comfyui import comfyui_client
 from app.models.user import User
 
@@ -10,8 +11,8 @@ class ImageGenerator:
         prompt: str,
         reference_images: dict | None = None,
         style: str = "photographic",
-        width: int = 768,
-        height: int = 1024,
+        width: int | None = None,
+        height: int | None = None,
     ) -> dict:
         """Build a ComfyUI workflow JSON.
 
@@ -22,15 +23,20 @@ class ImageGenerator:
         For reference-image-based character consistency, nodes like
         IPAdapter or InstantID will be added to the workflow template.
         """
+        if width is None:
+            width = settings.image_default_width
+        if height is None:
+            height = settings.image_default_height
+
         workflow = {
             "3": {
                 "class_type": "KSampler",
                 "inputs": {
                     "seed": hash(uuid.uuid4()) % (2**32),
-                    "steps": 25,
-                    "cfg": 7.0,
-                    "sampler_name": "euler_ancestral",
-                    "scheduler": "normal",
+                    "steps": settings.image_sampler_steps,
+                    "cfg": settings.image_cfg_scale,
+                    "sampler_name": settings.image_sampler_name,
+                    "scheduler": settings.image_scheduler,
                     "denoise": 1.0,
                     "model": ["4", 0],
                     "positive": ["6", 0],
@@ -41,7 +47,7 @@ class ImageGenerator:
             "4": {
                 "class_type": "CheckpointLoaderSimple",
                 "inputs": {
-                    "ckpt_name": "sd_xl_base_1.0.safetensors",
+                    "ckpt_name": settings.image_checkpoint_name,
                 },
             },
             "5": {
@@ -55,7 +61,7 @@ class ImageGenerator:
             "7": {
                 "class_type": "CLIPTextEncode",
                 "inputs": {
-                    "text": "ugly, blurry, deformed, low quality",
+                    "text": settings.image_negative_prompt,
                     "clip": ["4", 1],
                 },
             },
@@ -65,7 +71,7 @@ class ImageGenerator:
             },
             "9": {
                 "class_type": "SaveImage",
-                "inputs": {"filename_prefix": "ava_gen", "images": ["8", 0]},
+                "inputs": {"filename_prefix": settings.image_filename_prefix, "images": ["8", 0]},
             },
         }
 

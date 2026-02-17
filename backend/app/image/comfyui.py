@@ -15,28 +15,28 @@ class ComfyUIClient:
             response = await client.post(
                 f"{self._base_url}/prompt",
                 json={"prompt": workflow},
-                timeout=30.0,
+                timeout=settings.comfyui_submit_timeout,
             )
             response.raise_for_status()
             data = response.json()
             return data["prompt_id"]
 
-    async def poll_result(self, prompt_id: str, timeout: float = 120.0) -> dict:
+    async def poll_result(self, prompt_id: str) -> dict:
         """Poll until the workflow completes. Returns the history entry."""
-        deadline = asyncio.get_event_loop().time() + timeout
+        deadline = asyncio.get_event_loop().time() + settings.comfyui_poll_timeout
         async with httpx.AsyncClient() as client:
             while asyncio.get_event_loop().time() < deadline:
                 response = await client.get(
                     f"{self._base_url}/history/{prompt_id}",
-                    timeout=10.0,
+                    timeout=settings.comfyui_request_timeout,
                 )
                 response.raise_for_status()
                 history = response.json()
                 if prompt_id in history:
                     return history[prompt_id]
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(settings.comfyui_poll_interval)
         raise TimeoutError(
-            f"ComfyUI workflow {prompt_id} did not complete in {timeout}s"
+            f"ComfyUI workflow {prompt_id} did not complete in {settings.comfyui_poll_timeout}s"
         )
 
     async def download_image(self, filename: str, subfolder: str = "") -> bytes:
@@ -48,7 +48,7 @@ class ComfyUIClient:
             response = await client.get(
                 f"{self._base_url}/view",
                 params=params,
-                timeout=30.0,
+                timeout=settings.comfyui_download_timeout,
             )
             response.raise_for_status()
             return response.content

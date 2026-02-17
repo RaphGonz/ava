@@ -2,9 +2,11 @@ import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import ModeIndicator from "./ModeIndicator";
 import { useChatStore } from "../../store/chatStore";
+import { useAuthStore } from "../../store/authStore";
 
 export default function ChatWindow() {
   const mode = useChatStore((s) => s.mode);
+  const logout = useAuthStore((s) => s.logout);
 
   return (
     <div
@@ -24,6 +26,12 @@ export default function ChatWindow() {
           <span className="font-semibold text-sm">AVA</span>
           <ModeIndicator />
         </div>
+        <button
+          onClick={logout}
+          className="text-xs text-gray-400 hover:text-white px-3 py-1 rounded border border-gray-700 hover:border-gray-500 transition-colors"
+        >
+          Logout
+        </button>
       </header>
       <MessageList />
       <MessageInput />
