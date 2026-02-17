@@ -12,6 +12,7 @@ interface ChatState {
   messages: ChatMessage[];
   sessionId: string | null;
   isStreaming: boolean;
+  isLoadingHistory: boolean;
   mode: "jarvis" | "her";
   addUserMessage: (id: string, content: string) => void;
   addAssistantMessage: (id: string) => void;
@@ -20,13 +21,16 @@ interface ChatState {
   setSessionId: (id: string) => void;
   setMode: (mode: "jarvis" | "her") => void;
   setMessageImages: (id: string, images: string[]) => void;
+  setMessages: (messages: ChatMessage[]) => void;
+  setLoadingHistory: (loading: boolean) => void;
   clearMessages: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
-  sessionId: null,
+  sessionId: localStorage.getItem("session_id"),
   isStreaming: false,
+  isLoadingHistory: false,
   mode: "jarvis",
 
   addUserMessage: (id, content) =>
@@ -58,7 +62,10 @@ export const useChatStore = create<ChatState>((set) => ({
       isStreaming: false,
     })),
 
-  setSessionId: (id) => set({ sessionId: id }),
+  setSessionId: (id) => {
+    localStorage.setItem("session_id", id);
+    set({ sessionId: id });
+  },
 
   setMode: (mode) => set({ mode }),
 
@@ -69,5 +76,12 @@ export const useChatStore = create<ChatState>((set) => ({
       ),
     })),
 
-  clearMessages: () => set({ messages: [], sessionId: null }),
+  setMessages: (messages) => set({ messages }),
+
+  setLoadingHistory: (loading) => set({ isLoadingHistory: loading }),
+
+  clearMessages: () => {
+    localStorage.removeItem("session_id");
+    set({ messages: [], sessionId: null });
+  },
 }));
