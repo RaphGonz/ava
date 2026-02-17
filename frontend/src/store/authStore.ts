@@ -10,6 +10,13 @@ interface AuthState {
     current_mode: string;
     is_age_verified: boolean;
     is_onboarded: boolean;
+    safe_word: string | null;
+    exit_word: string | null;
+    avatar_config: {
+      style?: string;
+      character_description?: string;
+      preferences?: Record<string, unknown>;
+    } | null;
   } | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;

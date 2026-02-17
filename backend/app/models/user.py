@@ -18,6 +18,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     username: Mapped[str | None] = mapped_column(String(100))
     safe_word: Mapped[str | None] = mapped_column(String(255))
+    exit_word: Mapped[str | None] = mapped_column(String(255))
     current_mode: Mapped[str] = mapped_column(String(20), default="jarvis")
     avatar_config: Mapped[dict | None] = mapped_column(JSONB)
     is_age_verified: Mapped[bool] = mapped_column(Boolean, default=False)

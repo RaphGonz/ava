@@ -1,10 +1,29 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import ModeIndicator from "./ModeIndicator";
+import SettingsPopup from "./SettingsPopup";
 import { useChatStore } from "../../store/chatStore";
 import { useAuthStore } from "../../store/authStore";
 import api from "../../api/client";
+
+function CogIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-4 h-4"
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
 
 export default function ChatWindow() {
   const mode = useChatStore((s) => s.mode);
@@ -15,6 +34,8 @@ export default function ChatWindow() {
   const setLoadingHistory = useChatStore((s) => s.setLoadingHistory);
   const logout = useAuthStore((s) => s.logout);
   const fetchUser = useAuthStore((s) => s.fetchUser);
+
+  const [showSettings, setShowSettings] = useState(false);
 
   // Fetch user profile on mount (to get current_mode)
   useEffect(() => {
@@ -44,13 +65,11 @@ export default function ChatWindow() {
         }));
         if (loaded.length > 0) {
           setMessages(loaded);
-          // Sync mode from last message
           const lastMode = data[data.length - 1]?.mode;
           if (lastMode) setMode(lastMode as "jarvis" | "her");
         }
       })
       .catch(() => {
-        // Session may have been deleted — clear stale ID
         localStorage.removeItem("session_id");
       })
       .finally(() => {
@@ -78,15 +97,25 @@ export default function ChatWindow() {
           <span className="font-semibold text-sm">AVA</span>
           <ModeIndicator />
         </div>
-        <button
-          onClick={logout}
-          className="text-xs text-gray-400 hover:text-white px-3 py-1 rounded border border-gray-700 hover:border-gray-500 transition-colors"
-        >
-          Logout
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-gray-400 hover:text-white p-1.5 rounded border border-gray-700 hover:border-gray-500 transition-colors"
+            title="Settings"
+          >
+            <CogIcon />
+          </button>
+          <button
+            onClick={logout}
+            className="text-xs text-gray-400 hover:text-white px-3 py-1 rounded border border-gray-700 hover:border-gray-500 transition-colors"
+          >
+            Logout
+          </button>
+        </div>
       </header>
       <MessageList />
       <MessageInput />
+      {showSettings && <SettingsPopup onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

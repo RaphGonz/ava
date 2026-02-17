@@ -55,8 +55,8 @@ async def send_message(
             detail=filter_result.reason or "Message blocked by content filter",
         )
 
-    # Safe word check — toggle mode (async, with length pre-check)
-    if user.safe_word and await guardian.check_safe_word(body.content, user.safe_word):
+    # Safe word check — toggle mode
+    if user.safe_word and guardian.check_safe_word(body.content, user.safe_word):
         new_mode = "her" if user.current_mode == "jarvis" else "jarvis"
         user.current_mode = new_mode
         await db.commit()
@@ -72,7 +72,7 @@ async def send_message(
         return EventSourceResponse(mode_switch_event())
 
     # Exit keyword check (only in Her mode)
-    if user.current_mode == "her" and guardian.check_exit_keyword(body.content):
+    if user.current_mode == "her" and guardian.check_exit_keyword(body.content, user.exit_word):
         user.current_mode = "jarvis"
         await db.commit()
         logger.info("[user:%s] exiting Her mode via keyword", user_id_short)

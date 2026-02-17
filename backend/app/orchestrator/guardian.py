@@ -1,15 +1,10 @@
-import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from passlib.context import CryptContext
-
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Load blocked keywords from external file (one per line)
 _KEYWORDS_FILE = Path(__file__).parent / "blocked_keywords.txt"
@@ -38,27 +33,18 @@ class Guardian:
     async def post_filter_text(self, text: str) -> FilterResult:
         return await self.pre_filter(text)
 
-    async def check_safe_word(self, text: str, safe_word_hash: str) -> bool:
-        """Check if the message is exactly the safe word.
-        Async + length pre-check to avoid blocking the event loop.
-        """
+    @staticmethod
+    def check_safe_word(text: str, safe_word: str) -> bool:
+        """Check if the message is exactly the safe word (plain text comparison)."""
         word_count = len(text.strip().split())
         if word_count > settings.safe_word_max_words:
-            logger.debug("Safe word check skipped (msg too long: %d words)", word_count)
             return False
-
-        logger.debug("Safe word check: running bcrypt verify")
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, pwd_context.verify, text.strip(), safe_word_hash
-        )
+        return text.strip().lower() == safe_word.strip().lower()
 
     @staticmethod
-    def hash_safe_word(safe_word: str) -> str:
-        return pwd_context.hash(safe_word.strip())
-
-    @staticmethod
-    def check_exit_keyword(text: str) -> bool:
-        """Check if the message contains an exit keyword for Her mode."""
+    def check_exit_keyword(text: str, exit_word: str | None = None) -> bool:
+        """Check if the message matches the user's exit word, or falls back to global config."""
         normalized = text.lower().strip()
-        return any(kw in normalized for kw in settings.her_exit_keywords)
+        if exit_word:
+            return normalized == exit_word.strip().lower()
+        return any(kw == normalized for kw in settings.her_exit_keywords)

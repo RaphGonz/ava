@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.db.postgres import get_db
 from app.models.user import User
-from app.orchestrator.guardian import Guardian
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
@@ -32,7 +31,7 @@ async def complete_onboarding(
     user.is_age_verified = body.is_age_verified
 
     if body.safe_word:
-        user.safe_word = Guardian.hash_safe_word(body.safe_word)
+        user.safe_word = body.safe_word.strip()
 
     avatar_config = user.avatar_config or {}
     avatar_config["style"] = body.avatar_style
