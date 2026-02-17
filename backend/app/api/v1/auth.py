@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import get_current_user
 from app.core.security import (
@@ -122,14 +123,15 @@ async def update_settings(
     if body.exit_word is not None:
         user.exit_word = body.exit_word.strip() if body.exit_word.strip() else None
 
-    # Update avatar_config fields
+    # Update avatar_config fields (copy dict so SQLAlchemy detects the mutation)
     if body.avatar_style is not None or body.character_description is not None:
-        avatar_config = user.avatar_config or {}
+        avatar_config = dict(user.avatar_config or {})
         if body.avatar_style is not None:
             avatar_config["style"] = body.avatar_style
         if body.character_description is not None:
             avatar_config["character_description"] = body.character_description
         user.avatar_config = avatar_config
+        flag_modified(user, "avatar_config")
 
     await db.commit()
     await db.refresh(user)
