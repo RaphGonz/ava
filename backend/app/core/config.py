@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434/v1"
     ollama_chat_model: str = "mistral"
     ollama_her_model: str = "dolphin-mistral"
+    ollama_supervisor_model: str = "llama3.1:8b"
 
     # Agent
-    agent_max_tool_iterations: int = 3
     agent_context_messages: int = 20
     supervisor_context_messages: int = 10
     safe_word_max_words: int = 4
@@ -40,13 +40,20 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 1440
     jwt_refresh_token_expire_days: int = 7
 
-    # ComfyUI
-    comfyui_url: str = "http://localhost:8188"
+    # ComfyUI Cloud
+    comfyui_url: str = "https://cloud.comfy.org"
+    comfyui_api_key: str = ""
     comfyui_submit_timeout: float = 30.0
-    comfyui_poll_timeout: float = 120.0
-    comfyui_poll_interval: float = 2.0
+    comfyui_poll_timeout: float = 300.0
+    comfyui_poll_interval: float = 3.0
     comfyui_request_timeout: float = 10.0
-    comfyui_download_timeout: float = 30.0
+    comfyui_download_timeout: float = 60.0
+    comfyui_workflow_template: str = "qwen_default.json"
+    comfyui_t2i_workflow_template: str = "qwen_t2i.json"
+
+    # Prompt rewriter
+    prompt_rewriter_model: str = "mistral"
+    prompt_rewriter_max_tokens: int = 300
 
     # Image generation defaults
     image_max_width: int = 1024

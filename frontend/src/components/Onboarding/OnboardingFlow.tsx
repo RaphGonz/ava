@@ -2,9 +2,9 @@ import { useState } from "react";
 import api from "../../api/client";
 import { useAuthStore } from "../../store/authStore";
 
-type Step = "age" | "username" | "preferences" | "safeword" | "style" | "confirm";
+type Step = "age" | "username" | "preferences" | "safeword" | "avatar" | "confirm";
 
-const STEPS: Step[] = ["age", "username", "preferences", "safeword", "style", "confirm"];
+const STEPS: Step[] = ["age", "username", "preferences", "safeword", "avatar", "confirm"];
 
 export default function OnboardingFlow() {
   const [stepIndex, setStepIndex] = useState(0);
@@ -12,14 +12,21 @@ export default function OnboardingFlow() {
     isAgeVerified: false,
     username: "",
     safeWord: "",
-    avatarStyle: "photographic",
     orientation: "",
+    // Avatar fields
+    gender: "woman",
+    nation: "",
+    description: "",
   });
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [comfyuiFilename, setComfyuiFilename] = useState<string>("");
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const fetchUser = useAuthStore((s) => s.fetchUser);
 
   const step = STEPS[stepIndex];
+
   const next = () => {
     if (step === "age" && !formData.isAgeVerified) {
       setError("You must confirm you are 18 or older.");
@@ -29,12 +36,60 @@ export default function OnboardingFlow() {
       setError("Please enter a name.");
       return;
     }
+    if (step === "avatar" && !avatarUrl) {
+      setError("Please generate and preview your avatar before continuing.");
+      return;
+    }
     setError("");
     setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
   };
+
   const prev = () => {
     setError("");
     setStepIndex((i) => Math.max(i - 1, 0));
+  };
+
+  const generateAvatar = async () => {
+    if (!formData.nation.trim()) {
+      setError("Please enter a nation or ethnicity.");
+      return;
+    }
+    if (!formData.description.trim()) {
+      setError("Please enter a description.");
+      return;
+    }
+    setError("");
+    setIsGenerating(true);
+    try {
+      const res = await api.post("/onboarding/generate-avatar", {
+        gender: formData.gender,
+        nation: formData.nation,
+        description: formData.description,
+      });
+      setAvatarUrl(res.data.avatar_url + "?t=" + Date.now());
+      setComfyuiFilename(res.data.comfyui_filename || "");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Avatar generation failed";
+      setError(msg);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const validateAndContinue = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      await api.post("/onboarding/validate-avatar", {
+        comfyui_filename: comfyuiFilename,
+      });
+      setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Validation failed";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const submit = async () => {
@@ -45,7 +100,6 @@ export default function OnboardingFlow() {
         username: formData.username,
         is_age_verified: formData.isAgeVerified,
         safe_word: formData.safeWord || null,
-        avatar_style: formData.avatarStyle,
         preferences: formData.orientation ? { orientation: formData.orientation } : null,
       });
       await fetchUser();
@@ -152,43 +206,94 @@ export default function OnboardingFlow() {
           </div>
         )}
 
-        {step === "style" && (
+        {step === "avatar" && (
           <div className="space-y-4">
-            <h2 className="text-xl font-bold">Avatar style</h2>
+            <h2 className="text-xl font-bold">Create your companion</h2>
             <p className="text-gray-400 text-sm">
-              Choose the visual style for AVA's generated images.
+              Describe your AI companion's appearance. A reference image will be generated
+              for character consistency.
             </p>
-            <div className="space-y-2">
-              {[
-                { value: "photographic", label: "Photographic", desc: "Realistic, high-quality photos" },
-                { value: "manga", label: "Manga / Anime", desc: "Japanese animation style" },
-                { value: "artistic", label: "Artistic", desc: "Stylized, painterly look" },
-              ].map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
-                    formData.avatarStyle === opt.value
-                      ? "bg-blue-900/40 ring-1 ring-blue-500"
-                      : "bg-gray-800 hover:bg-gray-750"
+
+            {/* Gender */}
+            <div className="flex gap-2">
+              {(["woman", "man"] as const).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => {
+                    setFormData({ ...formData, gender: g });
+                    setAvatarUrl(null);
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    formData.gender === g
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-800 text-gray-400 hover:bg-gray-750"
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="style"
-                    value={opt.value}
-                    checked={formData.avatarStyle === opt.value}
-                    onChange={(e) =>
-                      setFormData({ ...formData, avatarStyle: e.target.value })
-                    }
-                    className="w-4 h-4"
-                  />
-                  <div>
-                    <p className="text-sm font-medium">{opt.label}</p>
-                    <p className="text-xs text-gray-500">{opt.desc}</p>
-                  </div>
-                </label>
+                  {g.charAt(0).toUpperCase() + g.slice(1)}
+                </button>
               ))}
             </div>
+
+            {/* Nation / Ethnicity */}
+            <input
+              type="text"
+              value={formData.nation}
+              onChange={(e) => {
+                setFormData({ ...formData, nation: e.target.value });
+                setAvatarUrl(null);
+              }}
+              placeholder="Nation / ethnicity (e.g. African American, Japanese...)"
+              className="w-full rounded-xl bg-gray-800 px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+
+            {/* Description */}
+            <textarea
+              value={formData.description}
+              onChange={(e) => {
+                setFormData({ ...formData, description: e.target.value });
+                setAvatarUrl(null);
+              }}
+              placeholder="Describe their appearance (hair color, eye color, body type, distinguishing features...)"
+              rows={3}
+              className="w-full rounded-xl bg-gray-800 px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none"
+            />
+
+            {/* Generate button */}
+            <button
+              onClick={generateAvatar}
+              disabled={isGenerating}
+              className="w-full rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-40 transition-colors"
+            >
+              {isGenerating
+                ? "Generating..."
+                : avatarUrl
+                ? "Regenerate"
+                : "Generate Avatar"}
+            </button>
+
+            {/* Loading indicator */}
+            {isGenerating && (
+              <div className="flex items-center justify-center py-4">
+                <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                <span className="ml-3 text-sm text-gray-400">
+                  Creating your companion...
+                </span>
+              </div>
+            )}
+
+            {/* Preview */}
+            {avatarUrl && !isGenerating && (
+              <div className="flex flex-col items-center gap-3">
+                <img
+                  src={avatarUrl}
+                  alt="Generated avatar"
+                  className="rounded-xl max-h-64 object-contain border border-gray-700"
+                />
+                <p className="text-xs text-gray-500">
+                  Not satisfied? Adjust the description and regenerate.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -206,14 +311,21 @@ export default function OnboardingFlow() {
                 <span className="text-gray-500">Safe word:</span>{" "}
                 {formData.safeWord || "Not set"}
               </p>
-              <p>
-                <span className="text-gray-500">Style:</span> {formData.avatarStyle}
-              </p>
               {formData.orientation && (
                 <p>
                   <span className="text-gray-500">Orientation:</span>{" "}
                   {formData.orientation}
                 </p>
+              )}
+              {avatarUrl && (
+                <div className="pt-2">
+                  <span className="text-gray-500">Avatar:</span>
+                  <img
+                    src={avatarUrl}
+                    alt="Your companion"
+                    className="mt-2 rounded-xl max-h-40 object-contain border border-gray-700"
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -239,6 +351,14 @@ export default function OnboardingFlow() {
               className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
             >
               {loading ? "Setting up..." : "Start Chatting"}
+            </button>
+          ) : step === "avatar" ? (
+            <button
+              onClick={validateAndContinue}
+              disabled={!avatarUrl || isGenerating || loading}
+              className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
+            >
+              {loading ? "Validating..." : "Continue"}
             </button>
           ) : (
             <button

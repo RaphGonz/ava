@@ -58,10 +58,11 @@ export default function ChatWindow() {
       .get(`/chat/history?session_id=${sessionId}`)
       .then(({ data }) => {
         if (cancelled) return;
-        const loaded = data.map((m: { id: string; role: string; content: string; mode: string }) => ({
+        const loaded = data.map((m: { id: string; role: string; content: string; mode: string; image_urls: string[] | null }) => ({
           id: m.id,
           role: m.role as "user" | "assistant",
           content: m.content,
+          images: m.image_urls || undefined,
         }));
         if (loaded.length > 0) {
           setMessages(loaded);

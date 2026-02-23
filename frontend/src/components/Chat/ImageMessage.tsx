@@ -8,7 +8,7 @@ export default function ImageMessage({ images }: ImageMessageProps) {
       {images.map((img, i) => (
         <img
           key={i}
-          src={`data:image/png;base64,${img}`}
+          src={img}
           alt={`Generated image ${i + 1}`}
           className="rounded-lg max-w-sm max-h-96 object-contain"
         />

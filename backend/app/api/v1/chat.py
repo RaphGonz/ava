@@ -1,6 +1,8 @@
+import base64
 import json
 import logging
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -22,6 +24,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 guardian = Guardian()
 
+_IMAGES_DIR = Path(__file__).parent.parent.parent.parent / "uploads" / "images"
+_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _save_images_to_disk(base64_images: list[str], msg_id: uuid.UUID) -> list[str]:
+    """Save base64 images to disk, return list of URL paths."""
+    urls = []
+    for i, b64 in enumerate(base64_images):
+        filename = f"{msg_id}_{i}.png"
+        filepath = _IMAGES_DIR / filename
+        filepath.write_bytes(base64.b64decode(b64))
+        urls.append(f"/uploads/images/{filename}")
+        logger.info("Saved image: %s", filename)
+    return urls
+
 
 class ChatRequest(BaseModel):
     content: str
@@ -34,6 +51,7 @@ class MessageResponse(BaseModel):
     content: str
     mode: str
     created_at: str
+    image_urls: list[str] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -94,6 +112,7 @@ async def send_message(
         )
 
     # Get or create session
+    session = None
     if body.session_id:
         result = await db.execute(
             select(Session).where(
@@ -102,8 +121,11 @@ async def send_message(
         )
         session = result.scalar_one_or_none()
         if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-    else:
+            logger.warning(
+                "[user:%s] session %s not found, creating new one",
+                user_id_short, body.session_id,
+            )
+    if not session:
         session = Session(user_id=user.id)
         db.add(session)
         await db.commit()
@@ -140,6 +162,7 @@ async def send_message(
 
     async def generate():
         full_response = []
+        collected_images: list[str] = []  # base64 images collected during streaming
 
         async for event in run_agent(body.content, history, user, current_mode):
             if event["type"] == "token":
@@ -151,9 +174,12 @@ async def send_message(
                     "mode": current_mode,
                 })
             elif event["type"] == "image":
+                collected_images.extend(event["images"])
+                # Save images to disk immediately and send URLs to frontend
+                image_urls = _save_images_to_disk(event["images"], assistant_msg_id)
                 yield json.dumps({
                     "event": "image",
-                    "images": event["images"],
+                    "image_urls": image_urls,
                     "session_id": str(session.id),
                     "msg_id": str(assistant_msg_id),
                     "mode": current_mode,
@@ -175,6 +201,12 @@ async def send_message(
 
         # Save assistant message after streaming completes
         content = "".join(full_response)
+        # Images were already saved during streaming; just build URL list for DB
+        saved_urls = [
+            f"/uploads/images/{assistant_msg_id}_{i}.png"
+            for i in range(len(collected_images))
+        ] if collected_images else None
+
         assistant_msg = Message(
             id=assistant_msg_id,
             session_id=session.id,
@@ -182,6 +214,7 @@ async def send_message(
             role="assistant",
             content=content,
             mode=current_mode,
+            image_urls=saved_urls,
         )
         db.add(assistant_msg)
         session.message_count = (session.message_count or 0) + 2
@@ -221,6 +254,7 @@ async def get_history(
             content=m.content,
             mode=m.mode,
             created_at=m.created_at.isoformat(),
+            image_urls=m.image_urls,
         )
         for m in reversed(messages)
     ]

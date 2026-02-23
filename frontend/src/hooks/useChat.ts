@@ -12,12 +12,12 @@ export function useChat() {
     setMode,
     setMessageImages,
     sessionId,
-    isStreaming,
   } = useChatStore();
 
   const sendMessage = useCallback(
     async (content: string) => {
-      if (isStreaming) return;
+      // Read live store value to avoid stale closure
+      if (useChatStore.getState().isStreaming) return;
 
       const userMsgId = crypto.randomUUID();
       addUserMessage(userMsgId, content);
@@ -51,9 +51,8 @@ export function useChat() {
             }
 
             // Handle image events
-            if (data.event === "image" && data.images) {
-              setMessageImages(assistantMsgId, data.images);
-              finishStreaming(assistantMsgId);
+            if (data.event === "image" && data.image_urls) {
+              setMessageImages(assistantMsgId, data.image_urls);
               return;
             }
 
@@ -72,6 +71,7 @@ export function useChat() {
         },
         onclose() {
           finishStreaming(assistantMsgId);
+          throw new Error("done"); // prevent fetchEventSource from auto-retrying
         },
         onerror(err) {
           finishStreaming(assistantMsgId);
@@ -80,7 +80,6 @@ export function useChat() {
       });
     },
     [
-      isStreaming,
       sessionId,
       addUserMessage,
       addAssistantMessage,
